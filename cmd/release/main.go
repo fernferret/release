@@ -20,12 +20,12 @@ func main() {
 
 	var module, remote, message string
 	var verbose, dryRun, doPush bool
-	var name, email string
+	var user, email string
 	format := "%Y.%m."
 	flag.StringVarP(&module, "component", "c", "", "component to tag, if not set will use 'release' which triggers all components to release")
 	flag.StringVarP(&remote, "remote", "r", "origin", "git remote to push to (if --push)")
 	flag.StringVarP(&message, "msg", "m", "", "optional release message, will create an annotated git tag")
-	flag.StringVar(&name, "name", "", "override name in ~/.gitconfig")
+	flag.StringVar(&user, "user", "", "override user in ~/.gitconfig")
 	flag.StringVar(&email, "email", "", "override email in ~/.gitconfig")
 	// flag.StringVarP(&format, "fmt", "f", "%Y.%m.", "date format to use")
 	flag.BoolVarP(&verbose, "verbose", "v", false, "enable more output")
@@ -47,12 +47,19 @@ func main() {
 	}
 
 	cfg, err := config.LoadConfig(config.GlobalScope)
-	release.CheckIfError(err, "failed to load global git config")
-	if name == "" {
-		name = cfg.Author.Name
-	}
-	if email == "" {
-		name = cfg.Author.Email
+	if err == nil {
+		if user == "" {
+			user = cfg.User.Name
+		}
+		if email == "" {
+			email = cfg.User.Email
+		}
+	} else {
+		// At this point, we might be in a CI environment and might not have gitconfig
+		// setup. If we're not using heavy tags, we don't even care about this error,
+		// so we'll log a warning (only visible at debug) and if the user tries to create
+		// an annotated tag, we'll deal with it then.
+		log.Debug().Err(err).Msg("unable to load git config, this is only a problem if you're using annotated tags")
 	}
 
 	cwd, err := os.Getwd()
@@ -70,7 +77,7 @@ func main() {
 		fmt.Printf("would create release:\n%s\n", newRelease)
 		os.Exit(0)
 	}
-	_, err = rm.CreateTag(newRelease, message, name, email)
+	_, err = rm.CreateTag(newRelease, message, user, email)
 	if err != nil {
 		log.Fatal().Msgf("failed to create tag %s: %s", newRelease, err.Error())
 		os.Exit(1)

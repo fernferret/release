@@ -187,6 +187,14 @@ func (r *Manager) CreateTag(name, comment, user, email string) (*plumbing.Refere
 	}
 	var opts *git.CreateTagOptions
 	if comment != "" {
+		if user == "" || email == "" {
+			msg := "both user and email are required when specifying a message, something might be wrong with your ~/.gitconfig or you didn't specify --name and --email"
+			log.Fatal().Str(
+				"name", user,
+			).Str(
+				"email", email,
+			).Msg(msg)
+		}
 		sig := &object.Signature{
 			Name:  user,
 			Email: email,
