@@ -9,10 +9,10 @@ build:
 # 	go run ./cmd/release
 
 test:
-	go test ./... -v
+	go test -v ./...
 
 fmt:
-	go fmt ./... -v
+	go fmt ./...
 
 .PHONY: install test fmt
 
