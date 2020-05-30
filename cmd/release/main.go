@@ -45,9 +45,12 @@ func main() {
 	cwd, err := os.Getwd()
 	release.CheckIfError(err, "failed to get current dir")
 
-	rm, err := release.NewReleaseManager(cwd, format, incrementFormat)
-	// We always want a release number
+	// Create a new Release Manager
+	rm, err := release.NewManager(cwd, format, incrementFormat)
+
+	// This is customizable, but for now, we always want a release number
 	rm.AlwaysIncludeNumber = true
+
 	release.CheckIfError(err, "failed to load release manager")
 	next, _ := rm.GetProposedName(module)
 	if dryRun {

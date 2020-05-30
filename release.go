@@ -83,7 +83,8 @@ func (s releaseList) Less(i, j int) bool {
 	return s[i].Date().After(s[j].Date())
 }
 
-type ReleaseManager struct {
+// Manager is responsible for keeping the state required to perform releases
+type Manager struct {
 	// Git Items
 	repoDir             string
 	cwd                 string
@@ -107,15 +108,15 @@ func FindRepoDir(path string) (string, error) {
 	return path, nil
 }
 
-// NewReleaseManager creates a new release manager with a given directory
-func NewReleaseManager(cwd, timeFmt, incFmt string) (*ReleaseManager, error) {
+// NewManager creates a new release manager with a given directory
+func NewManager(cwd, timeFmt, incFmt string) (*Manager, error) {
 	repoDir, err := FindRepoDir(cwd)
 	log.Debug().Msgf("searching for git directory in: %s", cwd)
 	CheckIfError(err, "failed to find repo dir")
 	r, err := git.PlainOpen(repoDir)
 	CheckIfError(err, "failed to load git repository")
 
-	mgr := &ReleaseManager{
+	mgr := &Manager{
 		repoDir: repoDir,
 		cwd:     cwd,
 		repo:    r,
@@ -133,7 +134,7 @@ func tagToRefspec(tag string) config.RefSpec {
 // PushTagToRemote pushes the given local tag to the remote repository
 // returns a message to be displayed to the user along with an an optional error,
 // If err is nil, the operation was successful
-func (r *ReleaseManager) PushTagToRemote(tag, remote string) (string, error) {
+func (r *Manager) PushTagToRemote(tag, remote string) (string, error) {
 	options := &git.PushOptions{
 		RemoteName: remote,
 		RefSpecs: []config.RefSpec{
@@ -149,7 +150,7 @@ func (r *ReleaseManager) PushTagToRemote(tag, remote string) (string, error) {
 	return fmt.Sprintf("pushed tag %s to remote %s", tag, remote), err
 }
 
-func (r *ReleaseManager) loadGitTags() {
+func (r *Manager) loadGitTags() {
 	tagrefs, err := r.repo.Tags()
 	CheckIfError(err, "failed to load lightweight tags")
 	// Reset the relesae list
@@ -178,7 +179,8 @@ func (r *ReleaseManager) loadGitTags() {
 	sort.Sort(r.releases)
 }
 
-func (r *ReleaseManager) CreateTag(name, comment string) (*plumbing.Reference, error) {
+// CreateTag creates a tag in the repo, if comment is specified it creates an annotated tag
+func (r *Manager) CreateTag(name, comment string) (*plumbing.Reference, error) {
 	hash, err := r.repo.Head()
 	if err != nil {
 		return nil, err
@@ -189,7 +191,9 @@ func (r *ReleaseManager) CreateTag(name, comment string) (*plumbing.Reference, e
 	}
 	return r.repo.CreateTag(name, hash.Hash(), opts)
 }
-func (r *ReleaseManager) GetProposedName(name string) (string, []string) {
+
+// GetProposedName returns a proposed name for the next release tag
+func (r *Manager) GetProposedName(name string) (string, []string) {
 	tried := []string{}
 	now := time.Now()
 	proposedDate := gostrftime.Strftime(r.timeFmt, now)
