@@ -180,14 +180,19 @@ func (r *Manager) loadGitTags() {
 }
 
 // CreateTag creates a tag in the repo, if comment is specified it creates an annotated tag
-func (r *Manager) CreateTag(name, comment string) (*plumbing.Reference, error) {
+func (r *Manager) CreateTag(name, comment, user, email string) (*plumbing.Reference, error) {
 	hash, err := r.repo.Head()
 	if err != nil {
 		return nil, err
 	}
 	var opts *git.CreateTagOptions
 	if comment != "" {
-		opts = &git.CreateTagOptions{Message: comment}
+		sig := &object.Signature{
+			Name:  user,
+			Email: email,
+			When:  time.Now(),
+		}
+		opts = &git.CreateTagOptions{Message: comment, Tagger: sig}
 	}
 	return r.repo.CreateTag(name, hash.Hash(), opts)
 }
