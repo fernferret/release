@@ -16,33 +16,33 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+// CheckIfError checks if the given error is nil, if not it prints a message and exits
 func CheckIfError(err error, msg string) {
 	if err == nil {
 		return
 	}
 
-	fmt.Printf("\x1b[31;1m%s\x1b[0m\n", fmt.Sprintf("%s: %s", msg, err))
-	os.Exit(1)
+	log.Fatal().Err(err).Msg(msg)
 }
 
+// Release represents a release
 type Release struct {
-	Tag            string
-	Hash           string
-	ReleaseMessage string // This is the tag message, might not be present
-	CommitMessage  string
-	Author         object.Signature
-	Committer      object.Signature
-	Tagger         *object.Signature
+	Tag            string            // The human readable name of the tag
+	Hash           string            // The hash of the git commit that the tag points to
+	ReleaseMessage string            // This is the tag message, might not be present
+	CommitMessage  string            // The commit message should always be present
+	Author         object.Signature  // The author of the tag
+	Committer      object.Signature  // The committer (person who merged/ran git commit)
+	Tagger         *object.Signature // The person who created a proper tag (will be nil for lightweight tags)
 }
 
+// Date returns the date of when the commit the tag points to happened
 func (r *Release) Date() time.Time {
 	return r.Committer.When
 }
 
-func (r *Release) Name() string {
-	return r.Tag
-}
-
+// ReleasedBy returns who the tag was released by.
+// It looks at the Tagger first, if nil, it defaults to the Committer
 func (r *Release) ReleasedBy() object.Signature {
 	if r.Tagger != nil {
 		return *r.Tagger
@@ -50,6 +50,7 @@ func (r *Release) ReleasedBy() object.Signature {
 	return r.Committer
 }
 
+// ReleasedByString gives a nice printable string of who performed the release
 func (r *Release) ReleasedByString(includeDate bool) string {
 	relBy := r.ReleasedBy()
 	if includeDate {
@@ -67,17 +68,17 @@ func (r *Release) Message() string {
 	return strings.SplitN(r.CommitMessage, "\n", 1)[0]
 }
 
-type ReleaseList []Release
+type releaseList []Release
 
-func (s ReleaseList) Len() int {
+func (s releaseList) Len() int {
 	return len(s)
 }
-func (s ReleaseList) Swap(i, j int) {
+func (s releaseList) Swap(i, j int) {
 	s[i], s[j] = s[j], s[i]
 }
-func (s ReleaseList) Less(i, j int) bool {
+func (s releaseList) Less(i, j int) bool {
 	if s[i].Date().Equal(s[j].Date()) {
-		return strings.Compare(s[i].Name(), s[j].Name()) == -1
+		return strings.Compare(s[i].Tag, s[j].Tag) == -1
 	}
 	return s[i].Date().After(s[j].Date())
 }
@@ -87,7 +88,7 @@ type ReleaseManager struct {
 	repoDir             string
 	cwd                 string
 	repo                *git.Repository
-	releases            ReleaseList
+	releases            releaseList
 	timeFmt             string
 	incFmt              string
 	AlwaysIncludeNumber bool
@@ -152,7 +153,7 @@ func (r *ReleaseManager) loadGitTags() {
 	tagrefs, err := r.repo.Tags()
 	CheckIfError(err, "failed to load lightweight tags")
 	// Reset the relesae list
-	r.releases = ReleaseList{}
+	r.releases = releaseList{}
 	err = tagrefs.ForEach(func(t *plumbing.Reference) error {
 		newRelease := Release{}
 		obj, err := r.repo.CommitObject(t.Hash())
@@ -218,7 +219,7 @@ func (r *ReleaseManager) GetProposedName(name string) (string, []string) {
 		}
 		foundTag := false
 		for _, release := range r.releases {
-			if strings.Contains(release.Name(), proposedName) {
+			if strings.Contains(release.Tag, proposedName) {
 				// Already have a release
 				foundTag = true
 				break
