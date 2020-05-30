@@ -14,5 +14,5 @@ test:
 fmt:
 	go fmt ./...
 
-.PHONY: install test fmt
+.PHONY: test fmt vendor
 
