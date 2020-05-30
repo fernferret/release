@@ -4,6 +4,11 @@ all: build
 build:
 	go build -o bin/release -v ./cmd/release
 
+update:
+	go get -u
+	go mod tidy
+	go mod vendor
+
 # This is awkward from a makefile, but here's how you'd do in-place runs
 # run:
 # 	go run ./cmd/release
@@ -14,5 +19,5 @@ test:
 fmt:
 	go fmt ./...
 
-.PHONY: test fmt vendor
+.PHONY: test fmt update
 
