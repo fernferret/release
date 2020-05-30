@@ -1,0 +1,236 @@
+package release
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"time"
+
+	"github.com/cactus/gostrftime"
+	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/config"
+	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/plumbing/object"
+	"github.com/rs/zerolog/log"
+)
+
+func CheckIfError(err error, msg string) {
+	if err == nil {
+		return
+	}
+
+	fmt.Printf("\x1b[31;1m%s\x1b[0m\n", fmt.Sprintf("%s: %s", msg, err))
+	os.Exit(1)
+}
+
+type Release struct {
+	Tag            string
+	Hash           string
+	ReleaseMessage string // This is the tag message, might not be present
+	CommitMessage  string
+	Author         object.Signature
+	Committer      object.Signature
+	Tagger         *object.Signature
+}
+
+func (r *Release) Date() time.Time {
+	return r.Committer.When
+}
+
+func (r *Release) Name() string {
+	return r.Tag
+}
+
+func (r *Release) ReleasedBy() object.Signature {
+	if r.Tagger != nil {
+		return *r.Tagger
+	}
+	return r.Committer
+}
+
+func (r *Release) ReleasedByString(includeDate bool) string {
+	relBy := r.ReleasedBy()
+	if includeDate {
+		return fmt.Sprintf("%s <%s> on %s", relBy.Name, relBy.Email, gostrftime.Format("%Y-%m-%d %H:%M:%S", relBy.When))
+	}
+	return fmt.Sprintf("%s <%s>", relBy.Name, relBy.Email)
+}
+
+// Message returns a friendly messaage for the commit, it uses the tagged message if that's
+// available and defaults to the commit message
+func (r *Release) Message() string {
+	if r.ReleaseMessage != "" {
+		return r.ReleaseMessage
+	}
+	return strings.SplitN(r.CommitMessage, "\n", 1)[0]
+}
+
+type ReleaseList []Release
+
+func (s ReleaseList) Len() int {
+	return len(s)
+}
+func (s ReleaseList) Swap(i, j int) {
+	s[i], s[j] = s[j], s[i]
+}
+func (s ReleaseList) Less(i, j int) bool {
+	if s[i].Date().Equal(s[j].Date()) {
+		return strings.Compare(s[i].Name(), s[j].Name()) == -1
+	}
+	return s[i].Date().After(s[j].Date())
+}
+
+type ReleaseManager struct {
+	// Git Items
+	repoDir             string
+	cwd                 string
+	repo                *git.Repository
+	releases            ReleaseList
+	timeFmt             string
+	incFmt              string
+	AlwaysIncludeNumber bool
+}
+
+// FindRepoDir finds a git repository directory in the current or any parent directory
+func FindRepoDir(path string) (string, error) {
+	path = filepath.Clean(path)
+	if path == "/" {
+		return path, fmt.Errorf("no git directory found in any parent directory")
+	}
+	gitPath := filepath.Join(path, ".git")
+	if _, err := os.Stat(gitPath); os.IsNotExist(err) {
+		return FindRepoDir(filepath.Dir(path))
+	}
+	return path, nil
+}
+
+// NewReleaseManager creates a new release manager with a given directory
+func NewReleaseManager(cwd, timeFmt, incFmt string) (*ReleaseManager, error) {
+	repoDir, err := FindRepoDir(cwd)
+	log.Debug().Msgf("searching for git directory in: %s", cwd)
+	CheckIfError(err, "failed to find repo dir")
+	r, err := git.PlainOpen(repoDir)
+	CheckIfError(err, "failed to load git repository")
+
+	mgr := &ReleaseManager{
+		repoDir: repoDir,
+		cwd:     cwd,
+		repo:    r,
+		timeFmt: timeFmt,
+		incFmt:  incFmt,
+	}
+	mgr.loadGitTags()
+	return mgr, nil
+}
+
+func tagToRefspec(tag string) config.RefSpec {
+	return config.RefSpec(fmt.Sprintf("refs/tags/%s:refs/tags/%s", tag, tag))
+}
+
+// PushTagToRemote pushes the given local tag to the remote repository
+// returns a message to be displayed to the user along with an an optional error,
+// If err is nil, the operation was successful
+func (r *ReleaseManager) PushTagToRemote(tag, remote string) (string, error) {
+	options := &git.PushOptions{
+		RemoteName: remote,
+		RefSpecs: []config.RefSpec{
+			tagToRefspec(tag),
+		},
+	}
+	err := r.repo.Push(options)
+	if err == git.NoErrAlreadyUpToDate {
+		return fmt.Sprintf("nothing pushed, tag %s already existed and was up to date in remote %s", tag, remote), nil
+	} else if err != nil {
+		return fmt.Sprintf("failed to push tag %s to remote %s", tag, remote), err
+	}
+	return fmt.Sprintf("pushed tag %s to remote %s", tag, remote), err
+}
+
+func (r *ReleaseManager) loadGitTags() {
+	tagrefs, err := r.repo.Tags()
+	CheckIfError(err, "failed to load lightweight tags")
+	// Reset the relesae list
+	r.releases = ReleaseList{}
+	err = tagrefs.ForEach(func(t *plumbing.Reference) error {
+		newRelease := Release{}
+		obj, err := r.repo.CommitObject(t.Hash())
+		if err != nil {
+			tag, _ := r.repo.TagObject(t.Hash())
+			newRelease.Tag = tag.Name
+			newRelease.ReleaseMessage = tag.Message
+			newRelease.Tagger = &tag.Tagger
+			obj, err = tag.Commit()
+			// TODO handle err
+		} else {
+			newRelease.Tag = t.Name().String()[10:]
+		}
+		newRelease.Hash = obj.ID().String()
+		newRelease.CommitMessage = obj.Message
+		newRelease.Author = obj.Author
+		newRelease.Committer = obj.Committer
+		r.releases = append(r.releases, newRelease)
+		log.Debug().Str("hash", newRelease.Hash).Str("releaser", newRelease.ReleasedByString(true)).Msgf("loaded tag: %s", newRelease.Tag)
+		return nil
+	})
+	sort.Sort(r.releases)
+}
+
+func (r *ReleaseManager) CreateTag(name, comment string) (*plumbing.Reference, error) {
+	hash, err := r.repo.Head()
+	if err != nil {
+		return nil, err
+	}
+	var opts *git.CreateTagOptions
+	if comment != "" {
+		opts = &git.CreateTagOptions{Message: comment}
+	}
+	return r.repo.CreateTag(name, hash.Hash(), opts)
+}
+func (r *ReleaseManager) GetProposedName(name string) (string, []string) {
+	tried := []string{}
+	now := time.Now()
+	proposedDate := gostrftime.Strftime(r.timeFmt, now)
+	pfx := ""
+	proposedName := fmt.Sprintf("%s%s", pfx, proposedDate)
+	// Iterate thorugh tags finding the latest cantidate release name
+	idx := 0
+	// Sometimes, we'll want to always include a release, this will give us:
+	// 2020.01.001, 2020.01.002 instead of 2020.01, 2020.01.001
+	if r.AlwaysIncludeNumber {
+		idx = 1
+	}
+	tried = append(tried, proposedName)
+	for {
+		// The first time we won't do anything, so you'll never get 20.05.0
+		// Instead you'll get the following:
+		// 2020.05
+		// 2020.05.1
+		// 2020.05.2
+		// ...
+		// Sometimes it may be preferable to force an increment
+		if idx > 0 {
+			// If we have an index
+			proposedFmt := fmt.Sprintf("%%s%s", r.incFmt)
+			proposedName = fmt.Sprintf(proposedFmt, proposedDate, idx)
+			tried = append(tried, proposedName)
+		}
+		foundTag := false
+		for _, release := range r.releases {
+			if strings.Contains(release.Name(), proposedName) {
+				// Already have a release
+				foundTag = true
+				break
+			}
+		}
+		if foundTag {
+			idx++
+			continue
+		}
+		if name != "" && !strings.HasPrefix(name, "-") {
+			name = fmt.Sprintf("-%s", name)
+		}
+		return fmt.Sprintf("%s%s", proposedName, name), tried
+	}
+}
