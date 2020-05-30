@@ -1,3 +1,5 @@
+[![Go Report Card](https://goreportcard.com/badge/fernferret/release)](https://goreportcard.com/report/fernferret/release) 
+
 # About
 
 A small helper for doing [calver](https://calver.org/) based releases.
