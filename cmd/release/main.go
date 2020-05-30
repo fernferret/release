@@ -128,11 +128,8 @@ func main() {
 			log.Error().Err(err).Msg(msg)
 			fmt.Printf("the tag will still be in the local repo you can delete it with `git tag -d %s` or push it with `git push <REMOTE> %s` once you have resolved the issue preventing push\n", newRelease, newRelease)
 		}
-	} else if verbose {
-		fmt.Printf("\nto push, just run:\n")
-		fmt.Printf("git push %s %s\n", remote, newRelease)
-		fmt.Printf("OR\n")
-		fmt.Printf("git push %s --tags\n", remote)
+	} else {
+		fmt.Printf("tag %s not pushed (--no-push specified), don't forget to push it!\n", newRelease)
 	}
 
 }

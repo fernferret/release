@@ -163,7 +163,7 @@ func (r *Manager) loadGitTags() {
 	CheckIfError(err, "failed to load lightweight tags")
 	// Reset the relesae list
 	r.releases = releaseList{}
-	err = tagrefs.ForEach(func(t *plumbing.Reference) error {
+	tagrefs.ForEach(func(t *plumbing.Reference) error {
 		newRelease := Release{}
 		obj, err := r.repo.CommitObject(t.Hash())
 		if err != nil {
@@ -172,7 +172,10 @@ func (r *Manager) loadGitTags() {
 			newRelease.ReleaseMessage = tag.Message
 			newRelease.Tagger = &tag.Tagger
 			obj, err = tag.Commit()
-			// TODO handle err
+			if err != nil {
+				log.Error().Err(err).Msgf("failed to load commit for tag %s, this looks bad, skipping", tag.Name)
+				return nil
+			}
 		} else {
 			newRelease.Tag = t.Name().String()[10:]
 		}
