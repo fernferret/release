@@ -13,6 +13,7 @@ import (
 	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
+	"github.com/go-git/go-git/v5/plumbing/transport"
 	"github.com/rs/zerolog/log"
 )
 
@@ -131,15 +132,22 @@ func tagToRefspec(tag string) config.RefSpec {
 	return config.RefSpec(fmt.Sprintf("refs/tags/%s:refs/tags/%s", tag, tag))
 }
 
+// CheckRemote performs a basic existence check on the remote and returns an error if there is a problem
+func (r *Manager) CheckRemote(remote string) error {
+	_, err := r.repo.Remote(remote)
+	return err
+}
+
 // PushTagToRemote pushes the given local tag to the remote repository
 // returns a message to be displayed to the user along with an an optional error,
 // If err is nil, the operation was successful
-func (r *Manager) PushTagToRemote(tag, remote string) (string, error) {
+func (r *Manager) PushTagToRemote(tag, remote string, auth transport.AuthMethod) (string, error) {
 	options := &git.PushOptions{
 		RemoteName: remote,
 		RefSpecs: []config.RefSpec{
 			tagToRefspec(tag),
 		},
+		Auth: auth,
 	}
 	err := r.repo.Push(options)
 	if err == git.NoErrAlreadyUpToDate {
