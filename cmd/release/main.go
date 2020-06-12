@@ -40,9 +40,8 @@ func homeDir() string {
 func main() {
 
 	var module, remote, message string
-	var verbose, dryRun bool
+	var verbose, dryRun, doPush bool
 	var user, email, sshKeyPath string
-	doPush := true
 	format := "%Y.%m."
 	defaultRemote := "origin"
 	flag.StringVarP(&module, "component", "c", "", "component to tag, if not set will use 'release' which triggers all components to release")
@@ -52,7 +51,7 @@ func main() {
 	flag.StringVar(&email, "email", "", "override email in ~/.gitconfig")
 	// flag.StringVarP(&format, "fmt", "f", "%Y.%m.", "date format to use")
 	flag.BoolVarP(&verbose, "verbose", "v", false, "enable more output")
-	noPush := flag.Bool("no-push", false, "push tag to default remote (does 'git push')")
+	flag.BoolVar(&doPush, "push", false, "push tag to default remote (does 'git push')")
 	flag.BoolVarP(&dryRun, "dry-run", "n", false, "don't create a release, just print what would be released")
 	defaultSSHKeyPath := fmt.Sprintf("%s/.ssh/id_rsa", homeDir())
 	flag.StringVar(&sshKeyPath, "ssh-key", defaultSSHKeyPath, "specify path to ssh key")
@@ -60,11 +59,6 @@ func main() {
 
 	if module == "" {
 		module = "release"
-	}
-
-	// Invert the nopush bool
-	if *noPush {
-		doPush = false
 	}
 
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
