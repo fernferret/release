@@ -1,8 +1,9 @@
-
 all: build
 
+git_hash = $(shell git describe --dirty --always)
+
 build:
-	go build -o bin/release -v ./cmd/release
+	go build -ldflags "-X main.version=$(git_hash)" -o bin/release -v ./cmd/release
 
 update:
 	go get -u

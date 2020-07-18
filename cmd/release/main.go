@@ -21,6 +21,8 @@ const (
 	incrementFormat = "%03d"
 )
 
+var version = "dev"
+
 func loadKeys(path string) transport.AuthMethod {
 	var auth transport.AuthMethod
 	sshKey, _ := ioutil.ReadFile(path)
@@ -37,6 +39,15 @@ func homeDir() string {
 	return usr.HomeDir
 }
 
+func getVersionString() string {
+	return fmt.Sprintf("release %s", version)
+}
+
+func usage() {
+	fmt.Fprintf(os.Stderr, "usage: release [component] [options]\n\n")
+	flag.PrintDefaults()
+}
+
 func main() {
 
 	var module, remote, message string
@@ -44,7 +55,7 @@ func main() {
 	var user, email, sshKeyPath string
 	format := "%Y.%m."
 	defaultRemote := "origin"
-	flag.StringVarP(&module, "component", "c", "", "component to tag, if not set will use 'release' which triggers all components to release")
+	flag.StringVarP(&module, "component", "c", "", "component to release, if not set will use 'release' which triggers all components to build and deploy, can also be specified as the first argument")
 	flag.StringVarP(&remote, "remote", "r", defaultRemote, "git remote to push to (if --push)")
 	flag.StringVarP(&message, "msg", "m", "", "optional release message, will create an annotated git tag")
 	flag.StringVar(&user, "user", "", "override user in ~/.gitconfig")
@@ -55,7 +66,14 @@ func main() {
 	flag.BoolVarP(&dryRun, "dry-run", "n", false, "don't create a release, just print what would be released")
 	defaultSSHKeyPath := fmt.Sprintf("%s/.ssh/id_rsa", homeDir())
 	flag.StringVar(&sshKeyPath, "ssh-key", defaultSSHKeyPath, "specify path to ssh key")
+	showVersion := flag.Bool("version", false, "display the version and exit")
+	flag.Usage = usage
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Fprintf(os.Stderr, "%s\n", getVersionString())
+		os.Exit(0)
+	}
 
 	if module == "" {
 		module = "release"
