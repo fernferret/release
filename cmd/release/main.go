@@ -118,7 +118,7 @@ func main() {
 
 	if doPush {
 		err := rm.CheckRemote(remote)
-		release.CheckIfError(err, "problem with remote, cannot push, use --no-push or fix the remote")
+		release.CheckIfError(err, fmt.Sprintf("problem with remote '%s', cannot push, omit --push or fix the remote", remote))
 	}
 
 	// This is customizable, but for now, we always want a release number
