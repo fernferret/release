@@ -61,6 +61,10 @@ func main() {
 		module = "release"
 	}
 
+	if len(flag.Args()) > 0 {
+		module = flag.Arg(0)
+	}
+
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 	// If we want UTC use this
 	// zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
