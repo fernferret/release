@@ -19,7 +19,8 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-// CheckIfError checks if the given error is nil, if not it prints a message and exits
+// CheckIfError checks if the given error is nil, if not it prints a message and
+// exits
 func CheckIfError(err error, msg string) {
 	if err == nil {
 		return
@@ -44,8 +45,8 @@ func (r *Release) Date() time.Time {
 	return r.Committer.When
 }
 
-// ReleasedBy returns who the tag was released by.
-// It looks at the Tagger first, if nil, it defaults to the Committer
+// ReleasedBy returns who the tag was released by. It looks at the Tagger first,
+// if nil, it defaults to the Committer
 func (r *Release) ReleasedBy() object.Signature {
 	if r.Tagger != nil {
 		return *r.Tagger
@@ -62,8 +63,8 @@ func (r *Release) ReleasedByString(includeDate bool) string {
 	return fmt.Sprintf("%s <%s>", relBy.Name, relBy.Email)
 }
 
-// Message returns a friendly messaage for the commit, it uses the tagged message if that's
-// available and defaults to the commit message
+// Message returns a friendly messaage for the commit, it uses the tagged
+// message if that's available and defaults to the commit message
 func (r *Release) Message() string {
 	if r.ReleaseMessage != "" {
 		return r.ReleaseMessage
@@ -98,7 +99,8 @@ type Manager struct {
 	AlwaysIncludeNumber bool
 }
 
-// FindRepoDir finds a git repository directory in the current or any parent directory
+// FindRepoDir finds a git repository directory in the current or any parent
+// directory
 func FindRepoDir(path string) (string, error) {
 	path = filepath.Clean(path)
 	if path == "/" {
@@ -134,15 +136,16 @@ func tagToRefspec(tag string) config.RefSpec {
 	return config.RefSpec(fmt.Sprintf("refs/tags/%s:refs/tags/%s", tag, tag))
 }
 
-// CheckRemote performs a basic existence check on the remote and returns an error if there is a problem
+// CheckRemote performs a basic existence check on the remote and returns an
+// error if there is a problem
 func (r *Manager) CheckRemote(remote string) error {
 	_, err := r.repo.Remote(remote)
 	return err
 }
 
-// PushTagToRemote pushes the given local tag to the remote repository
-// returns a message to be displayed to the user along with an an optional error,
-// If err is nil, the operation was successful
+// PushTagToRemote pushes the given local tag to the remote repository returns a
+// message to be displayed to the user along with an an optional error, If err
+// is nil, the operation was successful
 func (r *Manager) PushTagToRemote(tag, remote string, auth transport.AuthMethod) (string, error) {
 	options := &git.PushOptions{
 		RemoteName: remote,
@@ -192,7 +195,8 @@ func (r *Manager) loadGitTags() {
 	sort.Sort(r.releases)
 }
 
-// CreateTag creates a tag in the repo, if comment is specified it creates an annotated tag
+// CreateTag creates a tag in the repo, if comment is specified it creates an
+// annotated tag
 func (r *Manager) CreateTag(name, comment, user, email string) (*plumbing.Reference, error) {
 	hash, err := r.repo.Head()
 	if err != nil {
