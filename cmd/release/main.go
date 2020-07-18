@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/user"
 	"release"
+	"strings"
 
 	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing/transport"
@@ -50,12 +51,13 @@ func usage() {
 
 func main() {
 
-	var module, remote, message string
+	modules := []string{}
+	var remote, message string
 	var verbose, dryRun, doPush bool
 	var user, email, sshKeyPath string
 	format := "%Y.%m."
 	defaultRemote := "origin"
-	flag.StringVarP(&module, "component", "c", "", "component to release, if not set will use 'release' which triggers all components to build and deploy, can also be specified as the first argument")
+	flag.StringArrayVarP(&modules, "component", "c", []string{}, "component to release, if not set will use 'release' which triggers all components to build and deploy, can also be specified as the first argument")
 	flag.StringVarP(&remote, "remote", "r", defaultRemote, "git remote to push to (if --push)")
 	flag.StringVarP(&message, "msg", "m", "", "optional release message, will create an annotated git tag")
 	flag.StringVar(&user, "user", "", "override user in ~/.gitconfig")
@@ -75,12 +77,12 @@ func main() {
 		os.Exit(0)
 	}
 
-	if module == "" {
-		module = "release"
+	for idx := 0; idx < len(flag.Args()); idx++ {
+		modules = append(modules, flag.Arg(idx))
 	}
 
-	if len(flag.Args()) > 0 {
-		module = flag.Arg(0)
+	if len(modules) == 0 {
+		modules = append(modules, "release")
 	}
 
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
@@ -123,30 +125,56 @@ func main() {
 	rm.AlwaysIncludeNumber = true
 
 	release.CheckIfError(err, "failed to load release manager")
-	newRelease := rm.GetProposedName(module)
+	proposedDate := rm.GetProposedDate()
+	newReleases := []string{}
+	for _, module := range modules {
+		newReleases = append(newReleases, fmt.Sprintf("%s-%s", proposedDate, module))
+	}
+	plural := ""
+	if len(newReleases) > 1 {
+		plural = "s"
+	}
 	if dryRun {
-		fmt.Printf("would create release:\n%s\n", newRelease)
+		fmt.Printf("would create release%s:\n%s\n", plural, strings.Join(newReleases, ", "))
 		os.Exit(0)
 	}
-	_, err = rm.CreateTag(newRelease, message, user, email)
-	if err != nil {
-		log.Fatal().Msgf("failed to create tag %s: %s", newRelease, err.Error())
+
+	failedCreate := false
+	for _, newRelease := range newReleases {
+		_, err = rm.CreateTag(newRelease, message, user, email)
+		if err != nil {
+			log.Error().Msgf("failed to create tag %s: %s", newRelease, err.Error())
+			failedCreate = true
+			continue
+		}
+		// Success!
+		fmt.Printf("created release: %s\n", newRelease)
+
+		msg, err := rm.PushTagToRemote(newRelease, remote, loadKeys(sshKeyPath))
+		if doPush {
+			if err == nil {
+				// Great Success!
+				fmt.Println(msg)
+			} else {
+				log.Error().Err(err).Msg(msg)
+				fmt.Printf("the tag will still be in the local repo you can delete it with `git tag -d %s` or push it with `git push <REMOTE> %s` once you have resolved the issue preventing push\n", newRelease, newRelease)
+				failedCreate = true
+			}
+		}
+	}
+	if failedCreate {
+		// We failed at least one create, exit
+		pushMsg := ""
+		if doPush {
+			pushMsg = "/push"
+		}
+		log.Fatal().Msgf("at least one tag failed to create%s, see above. exiting...", pushMsg)
 		os.Exit(1)
 	}
 
-	fmt.Printf("created release: %s\n", newRelease)
-	if doPush {
-		msg, err := rm.PushTagToRemote(newRelease, remote, loadKeys(sshKeyPath))
-		if err == nil {
-			// Great Success!
-			fmt.Println(msg)
-		} else {
-			log.Error().Err(err).Msg(msg)
-			fmt.Printf("the tag will still be in the local repo you can delete it with `git tag -d %s` or push it with `git push <REMOTE> %s` once you have resolved the issue preventing push\n", newRelease, newRelease)
-		}
-	} else {
-		fmt.Printf("tag %s not pushed (--push not set), push it with:\n", newRelease)
-		fmt.Printf(" git push %s %s\n", remote, newRelease)
+	if !doPush {
+		fmt.Printf("tag%s (%s) not pushed (--push not set), push it with:\n", plural, strings.Join(newReleases, ", "))
+		fmt.Printf(" git push %s %s\n", remote, strings.Join(newReleases, " "))
 	}
 
 }

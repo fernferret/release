@@ -243,6 +243,9 @@ func (c *calVerStandard) String() string {
 }
 
 func (c *calVerStandard) FormatRelease(release string) string {
+	if release == "" {
+		return fmt.Sprintf("%d.%02d.%03d", c.Year, c.Month, c.Release)
+	}
 	return fmt.Sprintf("%d.%02d.%03d-%s", c.Year, c.Month, c.Release, release)
 }
 
@@ -297,4 +300,10 @@ func (r *Manager) getNextDateString(name string, now time.Time) string {
 func (r *Manager) GetProposedName(name string) string {
 	now := time.Now()
 	return r.getNextDateString(name, now)
+}
+
+// GetProposedDate returns a proposed name for the next release tag
+func (r *Manager) GetProposedDate() string {
+	now := time.Now()
+	return r.getNextDateString("", now)
 }
