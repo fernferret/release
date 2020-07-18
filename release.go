@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -216,50 +218,79 @@ func (r *Manager) CreateTag(name, comment, user, email string) (*plumbing.Refere
 	return r.repo.CreateTag(name, hash.Hash(), opts)
 }
 
-// GetProposedName returns a proposed name for the next release tag
-func (r *Manager) GetProposedName(name string) (string, []string) {
-	tried := []string{}
-	now := time.Now()
-	proposedDate := gostrftime.Strftime(r.timeFmt, now)
-	pfx := ""
-	proposedName := fmt.Sprintf("%s%s", pfx, proposedDate)
-	// Iterate thorugh tags finding the latest cantidate release name
-	idx := 0
-	// Sometimes, we'll want to always include a release, this will give us:
-	// 2020.01.001, 2020.01.002 instead of 2020.01, 2020.01.001
-	if r.AlwaysIncludeNumber {
-		idx = 1
+var pat = regexp.MustCompile(`^(?P<year>\d{4})\.(?P<month>\d{2})\.(?P<release>\d{3,})-.*$`)
+
+type calVerStandard struct {
+	Year    uint64
+	Month   uint64
+	Release uint64
+}
+
+func newCalVerStandard(year, month, rel uint64) *calVerStandard {
+	return &calVerStandard{
+		Year:    year,
+		Month:   month,
+		Release: rel,
 	}
-	tried = append(tried, proposedName)
-	for {
-		// The first time we won't do anything, so you'll never get 20.05.0
-		// Instead you'll get the following:
-		// 2020.05
-		// 2020.05.1
-		// 2020.05.2
-		// ...
-		// Sometimes it may be preferable to force an increment
-		if idx > 0 {
-			// If we have an index
-			proposedFmt := fmt.Sprintf("%%s%s", r.incFmt)
-			proposedName = fmt.Sprintf(proposedFmt, proposedDate, idx)
-			tried = append(tried, proposedName)
-		}
-		foundTag := false
-		for _, release := range r.releases {
-			if strings.Contains(release.Tag, proposedName) {
-				// Already have a release
-				foundTag = true
-				break
+}
+
+func (c *calVerStandard) String() string {
+	return fmt.Sprintf("Release: %d.%02d.%03d", c.Year, c.Month, c.Release)
+}
+
+func (c *calVerStandard) FormatRelease(release string) string {
+	return fmt.Sprintf("%d.%02d.%03d-%s", c.Year, c.Month, c.Release, release)
+}
+
+func (c *calVerStandard) IsAfter(other *calVerStandard) bool {
+	// Check to see of the other is greater than us, return the opposite of that
+	return !(other.Year > c.Year || other.Month > c.Month || other.Release > c.Release)
+}
+
+func (c *calVerStandard) IsSameMonth(other *calVerStandard) bool {
+	return other.Year == c.Year && other.Month == c.Month
+}
+
+func (c *calVerStandard) Increase() *calVerStandard {
+	c.Release++
+	return c
+}
+
+func (r *Manager) getNextDateString(name string, now time.Time) string {
+	// Create a new calVerStandard object to use as a baseline comparison. We do
+	// this with a 0 release time so this function can blindly call .Increase()
+	// at the end and not have to deal with a case where we created our own
+	// versus a case where we found another tag. If we find one (say .023) we'll
+	// have to increase it, but I want to reduce the branches so I just set this
+	// to 0, so the default entry will be 001
+	latest := newCalVerStandard(uint64(now.Year()), uint64(now.Month()), 0)
+	for _, release := range r.releases {
+		if pat.MatchString(release.Tag) {
+			results := pat.FindStringSubmatch(release.Tag)
+			year, _ := strconv.ParseUint(results[1], 10, 64)
+			month, _ := strconv.ParseUint(results[2], 10, 64)
+			relNum, _ := strconv.ParseUint(results[3], 10, 64)
+			rev := newCalVerStandard(year, month, relNum)
+			// Make sure the tag we're comparing is of our YYYY.MM, if it's not,
+			// we don't even bother comparing, we're not interested in past or
+			// future releases.
+			if !rev.IsSameMonth(latest) {
+				// Future time
+				continue
+			}
+			if rev.IsAfter(latest) {
+				latest = rev
 			}
 		}
-		if foundTag {
-			idx++
-			continue
-		}
-		if name != "" && !strings.HasPrefix(name, "-") {
-			name = fmt.Sprintf("-%s", name)
-		}
-		return fmt.Sprintf("%s%s", proposedName, name), tried
 	}
+
+	// Always increase the release before returning, this way we always get a
+	// unique one.
+	return latest.Increase().FormatRelease(name)
+}
+
+// GetProposedName returns a proposed name for the next release tag
+func (r *Manager) GetProposedName(name string) string {
+	now := time.Now()
+	return r.getNextDateString(name, now)
 }

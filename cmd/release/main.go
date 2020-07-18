@@ -105,7 +105,7 @@ func main() {
 	rm.AlwaysIncludeNumber = true
 
 	release.CheckIfError(err, "failed to load release manager")
-	newRelease, _ := rm.GetProposedName(module)
+	newRelease := rm.GetProposedName(module)
 	if dryRun {
 		fmt.Printf("would create release:\n%s\n", newRelease)
 		os.Exit(0)
