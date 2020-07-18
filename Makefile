@@ -1,6 +1,6 @@
 all: build
 
-git_hash = $(shell git describe --dirty --always)
+git_hash = $(shell git describe --dirty --always --tags)
 
 build:
 	go build -ldflags "-X main.version=$(git_hash)" -o bin/release -v ./cmd/release
