@@ -150,8 +150,8 @@ func main() {
 		// Success!
 		fmt.Printf("created release: %s\n", newRelease)
 
-		msg, err := rm.PushTagToRemote(newRelease, remote, loadKeys(sshKeyPath))
 		if doPush {
+			msg, err := rm.PushTagToRemote(newRelease, remote, loadKeys(sshKeyPath))
 			if err == nil {
 				// Great Success!
 				fmt.Println(msg)
